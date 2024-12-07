@@ -22,6 +22,8 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+// self defined syscalls
+int trace(int mask); // set to uint?
 
 // ulib.c
 int stat(const char*, struct stat*);

@@ -1,0 +1,30 @@
+I Using gdb
+
+1.  Looking at the backtrace output, which function called syscall
+A: usertrap() at kernel/trap.c calls the function.
+
+2. What is the value of p->trapframe->a7.  what does that value represent?
+A: Its value is 0x7. It means that the process is going to jump into the SYS_exec syscall.
+
+3. What was the previous mode that the CPU was in? 
+A: The CPU is in supervisor mode
+
+4.  Write down the assembly instruction the kernel is panicing at. Which register corresponds to the variable
+num?
+A:The instruction causing the panic is "lw	a3,0(zero)". Thus the register a3 corresponds to the variable num.
+
+5. Why does the kernel crash?
+A:The kernel space is mapped starting from 0x80000000. And the address 0x00000000 is not in this range.
+
+6.  Is that confirmed by the value in scause
+A:Yes. The value 0xd means “load access fault”, which is caused by access invalid memory address 0x0.
+
+7. What is the name of the process that was running when the kernel paniced?
+A: "initcode"
+
+8. What is its pid?
+A: 1
+
+III Attack xv6
+Change the 32 to 0 and you should see that your attack doesn't work anymore; why not? 
+Since now the secret string locates the first byte of the target page, not the 32-th byte anymore.

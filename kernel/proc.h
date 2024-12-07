@@ -104,4 +104,8 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  // add a mask for a process do I need to initialize it to 0?4
+  // no, global variable struct proc proc[NPROC]; set it to 0
+  int trace_mask;
 };

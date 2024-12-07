@@ -91,3 +91,18 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+// set trace mask for the syscall
+uint64
+sys_trace(void)
+{
+  // get mask from user space
+  int mask;
+  argint(0, &mask);
+
+  // get pointer to current process
+  myproc()->trace_mask = mask;
+
+  // success
+  return 0;
+}
