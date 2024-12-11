@@ -33,7 +33,7 @@ exec(char *path, char **argv)
 
   begin_op();
 
-  if((ip = namei(path)) == 0){
+  if((ip = namei(path)) == 0){ // opens the named binary path
     end_op();
     return -1;
   }
@@ -144,6 +144,8 @@ exec(char *path, char **argv)
 // va must be page-aligned
 // and the pages from va to va+sz must already be mapped.
 // Returns 0 on success, -1 on failure.
+// Here we call this function, since upon intialization, the MMU does not known the address
+// pagetable should be treated as physical address
 static int
 loadseg(pagetable_t pagetable, uint64 va, struct inode *ip, uint offset, uint sz)
 {

@@ -102,6 +102,30 @@ allocpid()
   return pid;
 }
 
+// allocate page for USYSCALL when success return 0, failed return -1
+// when allocate the page failed need to clean pagetable
+int allocate_usyscall_page(pagetable_t pagetable, int pid)
+{
+  // printf("allocate_usyscall_page for %d\n start", pid);
+  struct usyscall * record = (struct usyscall *) kalloc();
+  if (record == 0) return -1; // failed
+  record->pid = pid;
+
+  // map the page in into the page table
+  int status = mappages(pagetable, USYSCALL, PGSIZE,
+              (uint64)(record), PTE_R | PTE_U);
+  
+  // printf("allocate_usyscall_page for %d success\n", pid);
+  return status;
+}
+
+void free_usyscall_page(pagetable_t pagetable)
+{
+  // printf("free_usyscall_page start\n");
+  uvmunmap(pagetable, USYSCALL, 1, 1);
+  // printf("free_usyscall_page end\n");
+}
+
 // Look in the process table for an UNUSED proc.
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
@@ -202,6 +226,12 @@ proc_pagetable(struct proc *p)
     return 0;
   }
 
+  if (allocate_usyscall_page(pagetable, p->pid) < 0) {
+    free_usyscall_page(pagetable);
+    uvmfree(pagetable, 0);
+    return 0;
+  }
+
   return pagetable;
 }
 
@@ -212,6 +242,7 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
+  free_usyscall_page(pagetable);
   uvmfree(pagetable, sz);
 }
 

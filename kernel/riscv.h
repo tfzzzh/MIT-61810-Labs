@@ -383,9 +383,15 @@ typedef uint64 *pagetable_t; // 512 PTEs
 #endif
 
 // shift a physical address to the right place for a PTE.
-#define PA2PTE(pa) ((((uint64)pa) >> 12) << 10)
-
+#define PA2PTE(pa) ((((uint64)pa) >> 12) << 10) // 12 bits is the in page address which is not use full
+                                                // 10 bits stores page flags like RWX
 #define PTE2PA(pte) (((pte) >> 10) << 12)
+
+// map physical address in a superpage 
+// #define SPPA2PTE(sppa) ((((uint64)sppa) >> 21) << 10) (error! riscv not support the following codes)
+// #define SPPTE2PA(pte) (((pte) >> 10) << 21)
+#define SPPA2PTE(sppa) ((((uint64)sppa) >> 12) << 10) 
+#define SPPTE2PA(pte) (((pte) >> 10) << 12)
 
 #define PTE_FLAGS(pte) ((pte) & 0x3FF)
 

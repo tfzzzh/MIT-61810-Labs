@@ -1,0 +1,49 @@
+1. For every page table entry in the print_pgtbl output, 
+explain what it logically contains and what its permission bits are. 
+A: the print_pgtbl output with comments:
+// virtualAddr, PTEAddr, PhysicalAddr, Permission   Valid,PermFlag,Meaning
+va 0x0 pte 0x21FC885B pa 0x87F22000 perm 0x5B        yes  X-R .TextSegement
+va 0x1000 pte 0x21FC7C1B pa 0x87F1F000 perm 0x1B     yes  X-R .TextSegement
+va 0x2000 pte 0x21FC7817 pa 0x87F1E000 perm 0x17     yes  -WR .Data   
+va 0x3000 pte 0x21FC7407 pa 0x87F1D000 perm 0x7      yes  -WR ProcessStack
+va 0x4000 pte 0x21FC70D7 pa 0x87F1C000 perm 0xD7     yes  -WR ProcessStack
+va 0x5000 pte 0x0 pa 0x0 perm 0x0                    No
+va 0x6000 pte 0x0 pa 0x0 perm 0x0                    No
+va 0x7000 pte 0x0 pa 0x0 perm 0x0                    No
+va 0x8000 pte 0x0 pa 0x0 perm 0x0                    No
+va 0x9000 pte 0x0 pa 0x0 perm 0x0                    No
+va 0xFFFF6000 pte 0x0 pa 0x0 perm 0x0                No
+va 0xFFFF7000 pte 0x0 pa 0x0 perm 0x0                No
+va 0xFFFF8000 pte 0x0 pa 0x0 perm 0x0                No
+va 0xFFFF9000 pte 0x0 pa 0x0 perm 0x0                No
+va 0xFFFFA000 pte 0x0 pa 0x0 perm 0x0                No
+va 0xFFFFB000 pte 0x0 pa 0x0 perm 0x0                No
+va 0xFFFFC000 pte 0x0 pa 0x0 perm 0x0                No
+va 0xFFFFD000 pte 0x215CCC13 pa 0x85733000 perm 0x13 YES  --R page for accelerate systemcall execution
+va 0xFFFFE000 pte 0x21FD08C7 pa 0x87F42000 perm 0xC7 Yes  -WR trapframe(store process context)  
+va 0xFFFFF000 pte 0x2000184B pa 0x80006000 perm 0x4B Yes  X-R trampoline(context switch code)
+
+
+2. Which other xv6 system call(s) could be made faster using this shared page? Explain how. 
+A: I think the system call 'fstat' can also accelerate by this method. One can allocate serveral pages filled with 0 
+to store the file infomation of fds. Once a fstat is called on a fd. The file infomation will be writtend to one
+of the allocated pages. When the next time, a user calls fstat of the fd, the bookmarked information can be returned.
+When the fd is close, the OS shall reset the bookmarked entry to null.
+
+
+3. For every leaf page in the vmprint output, explain what it logically contains and what its permission bits are, and how it relates to the output of the earlier print_pgtbl() exercise above. Figure 3.4 in the xv6 book might be helpful, although note that the figure might have a slightly different set of pages than the process that's being inspected here.
+A. The result of vmprint is:
+page table 0x0000000085730000
+ ..0x0000000000000000: pte 0x00000000215d4001 pa 0x0000000085750000
+ .. ..0x0000000000000000: pte 0x00000000215d3c01 pa 0x000000008574f000
+ .. .. ..0x0000000000000000: pte 0x00000000215cd05b pa 0x0000000085734000
+ .. .. ..0x0000000000001000: pte 0x00000000215d0c1b pa 0x0000000085743000
+ .. .. ..0x0000000000002000: pte 0x00000000215d48d7 pa 0x0000000085752000
+ .. .. ..0x0000000000003000: pte 0x00000000215d4407 pa 0x0000000085751000
+ .. .. ..0x0000000000004000: pte 0x00000000215c60d7 pa 0x0000000085718000
+ ..0x0000003fc0000000: pte 0x00000000215cc401 pa 0x0000000085731000
+ .. ..0x0000003fffe00000: pte 0x00000000215cc801 pa 0x0000000085732000
+ .. .. ..0x0000003fffffd000: pte 0x00000000215ccc13 pa 0x0000000085733000
+ .. .. ..0x0000003fffffe000: pte 0x00000000215c88c7 pa 0x0000000085722000
+ .. .. ..0x0000003ffffff000: pte 0x000000002000184b pa 0x0000000080006000
+The leave pages have the same meaning with the ones in problem 1.

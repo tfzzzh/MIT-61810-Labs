@@ -43,6 +43,13 @@
 #define KERNBASE 0x80000000L
 #define PHYSTOP (KERNBASE + 128*1024*1024)
 
+// for SuperPage, the supper pages are stored in a list init in range
+// [start, end)
+#define NUM_SUPER_PAGE 20
+#define SUPER_PAGE_LIST_START (PHYSTOP - NUM_SUPER_PAGE*SUPERPGSIZE)
+#define SUPER_PAGE_LIST_END PHYSTOP
+#define ORD_PAGE_LIST_END SUPER_PAGE_LIST_START
+
 // map the trampoline page to the highest address,
 // in both user and kernel space.
 #define TRAMPOLINE (MAXVA - PGSIZE)
