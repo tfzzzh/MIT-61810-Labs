@@ -165,6 +165,7 @@ panic(char *s)
   pr.locking = 0;
   printf("panic: ");
   printf("%s\n", s);
+  backtrace();
   panicked = 1; // freeze uart output from other CPUs
   for(;;)
     ;
@@ -175,4 +176,28 @@ printfinit(void)
 {
   initlock(&pr.lock, "pr");
   pr.locking = 1;
+}
+
+void
+backtrace()
+{
+  // get address of current function
+  uint64 fp = r_fp();
+
+  // backto its caller
+  // fp = *((uint64 *) (fp - 16));
+
+  // get address for the page stores fp
+  uint64 page = PGROUNDDOWN(fp);
+
+  // loop to the root
+  printf("backtrace:\n");
+  while (PGROUNDDOWN(fp) == page) {
+    // print return address
+    uint64 retaddr = *((uint64*) (fp-8));
+    printf("%p\n", (void *) retaddr);
+
+    // move to parent
+    fp = *((uint64 *) (fp - 16));
+  }
 }

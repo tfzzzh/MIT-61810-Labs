@@ -1,0 +1,31 @@
+1. Which registers contain arguments to functions? For example, which register holds 13 in main's call to printf? 
+A: RISCV use register a0-7 to pass arguments. When main calls printf,
+the parameter 13 is stored in a2
+
+2. Where is the call to function f in the assembly code for main? Where is the call to g? (Hint: the compiler may inline functions.) 
+A: The compiler optimize the call by directly compute f(8) + 1. Its result
+directly passed to the function printf. And thus in the assemble code, the
+function f is not called.
+
+3. At what address is the function printf located? 
+A: the function is located at 0x00000000000006bc
+
+4.What value is in the register ra just after the jalr to printf in main? 
+A: According to the riscv mannual, the jalr stores return address in rd, not ra.
+The value of rd is 0x34 after jalr to printf.
+
+5. Run the following code.
+
+	unsigned int i = 0x00646c72;
+	printf("H%x Wo%s", 57616, (char *) &i);
+      
+
+What is the output
+Q. HE110 World
+
+
+6. In the following code, what is going to be printed after 'y='? (note: the answer is not a specific value.) Why does this happen?
+
+	printf("x=%d y=%d", 3);
+      
+I think it will print value in register a2

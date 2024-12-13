@@ -10,7 +10,7 @@
 .globl kernelvec
 .align 4
 kernelvec:
-        # make room to save registers.
+        # make room to save registers. (me: save the registers to a stack)
         addi sp, sp, -256
 
         # save caller-saved registers.

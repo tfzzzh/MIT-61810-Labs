@@ -284,6 +284,14 @@ r_time()
   return x;
 }
 
+static inline uint64
+r_fp()
+{
+  uint64 x;
+  asm volatile("mv %0, s0" : "=r" (x) );
+  return x;
+}
+
 // enable device interrupts
 static inline void
 intr_on()
@@ -338,6 +346,12 @@ r_ra()
   return x;
 }
 
+static inline void 
+w_a0(uint64 x)
+{
+  asm volatile("mv a0, %0" : : "r" (x));
+}
+
 // flush the TLB.
 static inline void
 sfence_vma()
@@ -374,6 +388,7 @@ typedef uint64 *pagetable_t; // 512 PTEs
 #define PXMASK          0x1FF // 9 bits
 #define PXSHIFT(level)  (PGSHIFT+(9*(level)))
 #define PX(level, va) ((((uint64) (va)) >> PXSHIFT(level)) & PXMASK)
+#define PGINDEX(va) (((uint64) (va)) & 0xFFF)
 
 // one beyond the highest possible virtual address.
 // MAXVA is actually one bit less than the max allowed by

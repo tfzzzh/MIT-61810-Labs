@@ -43,12 +43,12 @@ usertrap(void)
 
   // send interrupts and exceptions to kerneltrap(),
   // since we're now in the kernel.
-  w_stvec((uint64)kernelvec);
+  w_stvec((uint64)kernelvec); // when does we sink to kernel?
 
   struct proc *p = myproc();
   
   // save user program counter.
-  p->trapframe->epc = r_sepc();
+  p->trapframe->epc = r_sepc(); // sepc: instr where the trap happens
   
   if(r_scause() == 8){
     // system call
@@ -66,6 +66,28 @@ usertrap(void)
 
     syscall();
   } else if((which_dev = devintr()) != 0){
+    // handle tick of the process
+    if (which_dev == 2) {
+      struct proc * self = p;
+      // acquire(&self->lock); // what if the process becomes null?
+      if (self->alarm_ticks != 0 || self->alarm_handle != 0) {
+        self->alarm_elapsed += 1;
+        if (self->alarm_elapsed == self->alarm_ticks) {
+          // bookmark trapframe
+          struct trapframe * alarm_frame = (self->trapframe + 1);
+          
+          // copy frame
+          memmove(alarm_frame, self->trapframe, sizeof(struct trapframe));
+
+          self->alarm_frame = alarm_frame;
+
+          self->trapframe->epc = (uint64) self->alarm_handle;
+          // self->alarm_elapsed = 0;
+        }
+      }
+      // release(&self->lock);
+    }
+
     // ok
   } else {
     printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
@@ -78,9 +100,9 @@ usertrap(void)
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
-    yield();
+    yield(); // this is where the reschedule happens
 
-  usertrapret();
+  usertrapret(); // return to user
 }
 
 //
@@ -94,10 +116,10 @@ usertrapret(void)
   // we're about to switch the destination of traps from
   // kerneltrap() to usertrap(), so turn off interrupts until
   // we're back in user space, where usertrap() is correct.
-  intr_off();
+  intr_off(); // when is the interrupt open again?
 
   // send syscalls, interrupts, and exceptions to uservec in trampoline.S
-  uint64 trampoline_uservec = TRAMPOLINE + (uservec - trampoline);
+  uint64 trampoline_uservec = TRAMPOLINE + (uservec - trampoline); // trampoline_uservec is the entry point of interrupt
   w_stvec(trampoline_uservec);
 
   // set up trapframe values that uservec will need when
@@ -120,7 +142,7 @@ usertrapret(void)
   w_sepc(p->trapframe->epc);
 
   // tell trampoline.S the user page table to switch to.
-  uint64 satp = MAKE_SATP(p->pagetable);
+  uint64 satp = MAKE_SATP(p->pagetable); // switch to user's page table
 
   // jump to userret in trampoline.S at the top of memory, which 
   // switches to the user page table, restores user registers,
