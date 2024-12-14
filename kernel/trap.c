@@ -67,7 +67,33 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  }
+  // written page fault
+  else if (r_scause() == 0xf) {
+    // get the virtual address that cause error
+    uint64 va = r_stval();
+    
+    // get the pte for the va from page table
+    pte_t * pte = walk(p->pagetable, va, 0);
+    // if (pte == NULL) {
+    //   panic("trap: cannot handle page error, since va not exist");
+    // }
+
+    // // check if the pte is valid and writable
+    // if (!ISPAGE_VALID(*pte)) {
+    //   panic("trap: cannot handle page error, since va point to invalid page");
+    // }
+    // if (!ISPAGE_SHARED(*pte)) {
+    //   panic("trap: cannot handle page error, since page not shared");
+    // }
+    // if (!ISPAGE_WRITABLE(*pte)) {
+    //   panic("trap: cannot handle page error, page not writtable");
+    // }
+
+    // use the pte to handle page error
+    handle_cow_trap(pte);
+  } 
+  else {
     printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
     printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
     setkilled(p);

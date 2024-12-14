@@ -60,9 +60,13 @@ void            ramdiskintr(void);
 void            ramdiskrw(struct buf*);
 
 // kalloc.c
+// unsigned long
+// typedef uint64 pte_t;
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+pte_t           shallow_copy(pte_t pte);
+int             handle_cow_trap(pte_t * pte);
 
 // log.c
 void            initlog(int, struct superblock*);

@@ -494,7 +494,7 @@ sys_pipe(void)
     return -1;
   }
   if(copyout(p->pagetable, fdarray, (char*)&fd0, sizeof(fd0)) < 0 ||
-     copyout(p->pagetable, fdarray+sizeof(fd0), (char *)&fd1, sizeof(fd1)) < 0){
+     copyout(p->pagetable, fdarray+sizeof(fd0), (char *)&fd1, sizeof(fd1)) < 0){ // copy fd0, fd1 to pipe array
     p->ofile[fd0] = 0;
     p->ofile[fd1] = 0;
     fileclose(rf);
