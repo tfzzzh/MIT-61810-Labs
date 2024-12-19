@@ -125,3 +125,6 @@ struct dns_data {
   uint32 ttl;
   uint16 len;
 } __attribute__((packed));
+
+#define EXTRACT_IP_HEAD(pkt) ((struct ip *) ( ((char *) (pkt)) + sizeof(struct eth)))
+#define EXTRACT_UDP_HEAD(pkt) ((struct udp *) ( ((char *) (pkt)) + sizeof(struct eth) + sizeof(struct ip)))

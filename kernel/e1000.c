@@ -91,6 +91,10 @@ e1000_init(uint32 *xregs)
   regs[E1000_IMS] = (1 << 7); // RXDW -- Receiver Descriptor Write Back
 }
 
+void print_tx(struct tx_desc * ptr) {
+  printf("addr=%ld, len=%d\n, cmd=%d, cso=%d, css=%d, special=%d, status=%d\n", ptr->addr, ptr->length, ptr->cmd, ptr->cso, ptr->css, ptr->special, ptr->status);
+}
+
 int
 e1000_transmit(char *buf, int len)
 {
@@ -101,8 +105,34 @@ e1000_transmit(char *buf, int len)
   // the TX descriptor ring so that the e1000 sends it. Stash
   // a pointer so that it can be freed after send completes.
   //
+  // printf("pid %d try to get lock\n", myproc()->pid);
+  // acquire(&e1000_lock);
+  // error happen when add lock, why?
+  uint32 tail = regs[E1000_TDT];
 
-  
+  // ring buffer full
+  if ((tx_ring[tail].status & E1000_TXD_STAT_DD) == 0) {
+    release(&e1000_lock);
+    return -1;
+  }
+
+  // E1000_TXD_STAT_DD is set, the old buffer can be free
+  if (tx_ring[tail].addr != NULL) {
+    kfree((void *) tx_ring[tail].addr);
+  }
+  memset(tx_ring + tail, 0, sizeof(struct tx_desc));
+  tx_ring[tail].addr = (uint64) buf;
+  tx_ring[tail].length = len;
+
+  // update other bits, when eop not set, the other cannot recv msg!!!
+  tx_ring[tail].cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
+
+  // update tail
+  tail = (tail + 1) % TX_RING_SIZE;
+  regs[E1000_TDT] = tail;
+  // printf("done transmit\n");
+  // release(&e1000_lock);
+
   return 0;
 }
 
@@ -115,7 +145,41 @@ e1000_recv(void)
   // Check for packets that have arrived from the e1000
   // Create and deliver a buf for each packet (using net_rx()).
   //
+  // problem error handle and eos ignored
+  // acquire(&e1000_lock);
+  // printf("lock being get by pid at recv %d\n", myproc()->pid);
+  while (1) {
+    acquire(&e1000_lock);
+    uint64 tail = regs[E1000_RDT];
 
+    // get load from rx_ring
+    struct rx_desc * load = rx_ring + (tail + 1) % RX_RING_SIZE;
+    if ((load->status & E1000_RXD_STAT_DD) == 0) {
+      release(&e1000_lock);
+      break;
+    }
+
+    // handle load
+    void * buffer_rx = (void *) load->addr;
+    int length = load->length;
+
+    // reset load & fill with new buffer
+    memset(load, 0, sizeof(struct rx_desc));
+    load->addr = (uint64) kalloc();
+    // load->length = PGSIZE;
+
+    // // send data to protocal stack
+    // net_rx(buffer_rx, length);
+
+    // update head
+    tail = (tail + 1) % RX_RING_SIZE;
+    regs[E1000_RDT] = tail;
+    release(&e1000_lock);
+
+    // send data to protocal stack
+    net_rx(buffer_rx, length);
+  }
+  // release(&e1000_lock);
 }
 
 void
