@@ -201,6 +201,7 @@ void test1()
     }  
   }
 
+  ntas(1);
   printf("\ntest1 OK\n");
 }
 
