@@ -89,6 +89,8 @@ bget(uint dev, uint blockno)
 }
 
 // Return a locked buf with the contents of the indicated block.
+// quite a bad naming. You can use bread to get the buffer correpond
+// blockno. Then write this buffer.
 struct buf*
 bread(uint dev, uint blockno)
 {

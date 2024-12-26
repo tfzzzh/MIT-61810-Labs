@@ -301,6 +301,38 @@ create(char *path, short type, short major, short minor)
   return 0;
 }
 
+// find the inode linked to by symbolic link
+// when failed return 0
+struct inode * follow_link(struct inode * ip, int depth) {
+  if (depth >= 10) {
+    printf("follow_link: depth budget reached\n");
+    return 0;
+  }
+  char target[MAXSYMLEN];
+
+  ilock(ip);
+  memmove(target, (char *) ip->addrs, MAXSYMLEN);
+
+  // check if a regular file found
+  if (ip->type != T_SYMLINK) {
+    iunlock(ip);
+    return ip;
+  }
+  iunlockput(ip);
+
+  // found inode for the target
+  struct inode * next_ip = namei(target);
+  if (next_ip == NULL) {
+    printf("follow_link: file %s not exist\n", target);
+    return NULL;
+  }
+  // else {
+  //   printf("follow link to: %s\n", target);
+  // }
+
+  return follow_link(next_ip, depth + 1);
+}
+
 uint64
 sys_open(void)
 {
@@ -313,7 +345,8 @@ sys_open(void)
   argint(1, &omode);
   if((n = argstr(0, path, MAXPATH)) < 0)
     return -1;
-
+  
+  // printf("start to open %s\n", path);
   begin_op();
 
   if(omode & O_CREATE){
@@ -349,6 +382,20 @@ sys_open(void)
     return -1;
   }
 
+  // dispath symbolic
+  if (ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)) {
+    iunlock(ip);
+    ip = follow_link(ip, 0);
+    if (ip == NULL) {
+      // failed
+      myproc()->ofile[fd] = 0;
+      fileclose(f);
+      end_op();
+      return -1;
+    }
+    ilock(ip);
+  }
+
   if(ip->type == T_DEVICE){
     f->type = FD_DEVICE;
     f->major = ip->major;
@@ -361,6 +408,11 @@ sys_open(void)
   f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
 
   if((omode & O_TRUNC) && ip->type == T_FILE){
+    itrunc(ip);
+  }
+
+  // when ip->type == T_SYMLINK && trunc we shall trunk it
+  if((omode & O_TRUNC) && ip->type == T_SYMLINK){
     itrunc(ip);
   }
 
@@ -502,4 +554,70 @@ sys_pipe(void)
     return -1;
   }
   return 0;
+}
+
+// this function writes symbolic link to inode
+// correspond to symlink(char *target, char *path)
+extern uint64 sys_symlink(void)
+{
+  // read string from args
+  char target[MAXSYMLEN];
+  char path[MAXPATH];
+  char name[DIRSIZ];
+  uint poff;
+
+  if (argstr(0, target, MAXSYMLEN) < 0 || argstr(1, path, MAXPATH) < 0)
+    return -1;
+  
+  begin_op();
+  // create an inode correspond to the path
+  // find the directory contains path
+  struct inode * dp = nameiparent(path, name);
+  if (dp == 0) {
+    // failed
+    printf("sys_symlink: directory not found\n");
+    goto sys_symlink_fail;
+  }
+
+  // fetch id from disk and check whether name is used
+  ilock(dp);
+  if (dirlookup(dp, name, &poff) != NULL) {
+    iunlockput(dp);
+    printf("sys_symlink: %s already used not found\n", name);
+    goto sys_symlink_fail;
+  }
+
+  // create a new inode for the path
+  // after this resource: ip && dp
+  struct inode * ip;
+  if((ip = ialloc(dp->dev, T_SYMLINK)) == NULL) {
+    iunlockput(dp);
+    printf("sys_symlink: cannot alloc inode\n");
+    goto sys_symlink_fail;
+  }
+
+  // write target to the node
+  ilock(ip);
+  printf("no of the allocated ip is %d\n", ip->inum);
+  ip->nlink = 1;
+  memmove(ip->addrs, target, sizeof(target));
+  iupdate(ip); // persist to disk
+
+  // write the inode to dirent (need to hold lock for dp)
+  if(dirlink(dp, name, ip->inum) < 0) {
+    ip->nlink = 0;
+    iunlockput(ip); // here ip will be removed since no link add
+    iunlockput(dp);
+    printf("sys_symlink: cannot link to inode");
+    goto sys_symlink_fail;
+  }
+
+  iunlockput(ip); // ip has link 1, will not be removed
+  iunlockput(dp);
+  end_op();
+  return 0;
+
+sys_symlink_fail:
+  end_op();
+  return -1;
 }

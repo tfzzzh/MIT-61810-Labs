@@ -70,7 +70,7 @@ balloc(uint dev)
 
   bp = 0;
   for(b = 0; b < sb.size; b += BPB){
-    bp = bread(dev, BBLOCK(b, sb));
+    bp = bread(dev, BBLOCK(b, sb)); // read bitmap from disk
     for(bi = 0; bi < BPB && b + bi < sb.size; bi++){
       m = 1 << (bi % 8);
       if((bp->data[bi/8] & m) == 0){  // Is block free?
@@ -311,8 +311,10 @@ ilock(struct inode *ip)
     memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
     brelse(bp);
     ip->valid = 1;
-    if(ip->type == 0)
+    if(ip->type == 0) {
+      printf("error inode number : %d\n", ip->inum);
       panic("ilock: no type");
+    }
   }
 }
 
@@ -379,11 +381,76 @@ iunlockput(struct inode *ip)
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
 // returns 0 if out of disk space.
+// static uint
+// bmap(struct inode *ip, uint bn)
+// {
+//   uint addr, *a;
+//   struct buf *bp;
+
+//   if(bn < NDIRECT){
+//     if((addr = ip->addrs[bn]) == 0){
+//       addr = balloc(ip->dev);
+//       if(addr == 0)
+//         return 0;
+//       ip->addrs[bn] = addr;
+//     }
+//     return addr;
+//   }
+//   bn -= NDIRECT;
+
+//   if(bn < NINDIRECT){
+//     // Load indirect block, allocating if necessary.
+//     if((addr = ip->addrs[NDIRECT]) == 0){
+//       addr = balloc(ip->dev);
+//       if(addr == 0)
+//         return 0;
+//       ip->addrs[NDIRECT] = addr;
+//     }
+//     bp = bread(ip->dev, addr);
+//     a = (uint*)bp->data;
+//     if((addr = a[bn]) == 0){
+//       addr = balloc(ip->dev);
+//       if(addr){
+//         a[bn] = addr;
+//         log_write(bp);
+//       }
+//     }
+//     brelse(bp);
+//     return addr;
+//   }
+
+//   panic("bmap: out of range");
+// }
+/*
+when block stores block ids, return the block ids store at blockidx
+when failed reutrn null
+Assumption: block is locked
+*/
+uint find_or_alloc(uint dev, struct buf * block, uint blockidx) {
+  uint* load = (uint*) block->data;
+  uint addr =  load[blockidx] != NULL ? 
+      load[blockidx]:  balloc(dev);
+
+  // failed
+  if (addr == NULL) return NULL;
+
+  // write addr to the block
+  if (load[blockidx] == NULL) {
+    load[blockidx] = addr;
+    log_write(block);
+  }
+
+  return addr;
+}
+
+
 static uint
 bmap(struct inode *ip, uint bn)
 {
   uint addr, *a;
   struct buf *bp;
+
+  if (bn >= MAXFILE) panic("bmap: bn out of range");
 
   if(bn < NDIRECT){
     if((addr = ip->addrs[bn]) == 0){
@@ -417,7 +484,64 @@ bmap(struct inode *ip, uint bn)
     return addr;
   }
 
-  panic("bmap: out of range");
+  // level 0
+  bn -= NINDIRECT;
+  uint addr0 = ip->addrs[NDIRECT+1];
+  if (addr0 == NULL) {
+    addr0 = balloc(ip->dev);
+    if (addr0 == NULL) return 0;
+    ip->addrs[NDIRECT+1] = addr0;
+  }
+
+  // interate over 
+  uint bin = bn / NINDIRECT, binoff = bn % NINDIRECT;
+  struct buf * bp0 = bread(ip->dev, addr0);
+  // goto first level use bin
+  // uint addr1 =  ((uint*) bp0->data)[bin];
+  // if (addr1 == NULL) {
+  //   addr1 = balloc(ip->dev);
+    
+  //   // alloc fail return null & release resource
+  //   if (addr1 == NULL) {
+  //     brelse(bp0);
+  //     return NULL;
+  //   }
+
+  //   // notifying fs that we have change 
+  //   ((uint*) bp0->data)[bin] = addr1;
+  //   log_write(bp0);
+  // }
+  uint addr1 = find_or_alloc(ip->dev, bp0, bin);
+  if (addr1 == NULL) {
+    brelse(bp0);
+    return NULL;
+  }
+
+  // get level 1 block using addr1
+  struct buf * bp1 = bread(ip->dev, addr1);
+
+  // get the required block
+  // addr =  ((uint*) bp1->data)[binoff];
+  // if (addr == NULL) {
+  //   addr = balloc(ip->dev);
+
+  //   // alloc fail
+  //   if (addr == NULL) {
+  //     brelse(bp1);
+  //     brelse(bp0);
+  //     return 0;
+  //   }
+
+  //   // write addr2 to bp1
+  //   ((uint*) bp1->data)[binoff] = addr;
+  //   log_write(bp1);
+  // }
+  addr = find_or_alloc(ip->dev, bp1, binoff);
+
+  brelse(bp1);
+  brelse(bp0);
+
+  return addr;
 }
 
 // Truncate inode (discard contents).
@@ -428,6 +552,10 @@ itrunc(struct inode *ip)
   int i, j;
   struct buf *bp;
   uint *a;
+
+  if (ip->type == T_SYMLINK) {
+    memset(ip->addrs, 0, sizeof(ip->addrs));
+  }
 
   for(i = 0; i < NDIRECT; i++){
     if(ip->addrs[i]){
@@ -446,6 +574,38 @@ itrunc(struct inode *ip)
     brelse(bp);
     bfree(ip->dev, ip->addrs[NDIRECT]);
     ip->addrs[NDIRECT] = 0;
+  }
+
+  // free last level
+  uint b0id = ip->addrs[NDIRECT+1];
+  if (b0id != 0) {
+    struct buf *bp0 = bread(ip->dev, b0id);
+    uint* a0 = (uint*)bp0->data;
+
+    for (i = 0; i < NINDIRECT; ++i) {
+      uint b1id = a0[i];
+      if (b1id != 0) {
+        struct buf *bp1 = bread(ip->dev, b1id);
+        uint* a1 = (uint*)bp1->data;
+
+        // last layer
+        for (int j=0; j < NINDIRECT; ++j) {
+          uint b2id = a1[j];
+          if (b2id != 0) {
+            bfree(ip->dev, b2id);
+            a1[j] = 0; // need this?
+          }
+        }
+
+        brelse(bp1);
+        bfree(ip->dev, b1id);
+        a0[i] = 0;
+      }
+    }
+
+    brelse(bp0);
+    bfree(ip->dev, b0id);
+    ip->addrs[NDIRECT+1] = 0;
   }
 
   ip->size = 0;

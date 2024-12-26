@@ -23,6 +23,7 @@
 #endif
 #endif
 #define MAXPATH      128   // maximum file path name
+#define MAXSYMLEN    52    // maximum length of symbolic link
 
 #ifdef LAB_UTIL
 #define USERSTACK    2     // user stack pages
