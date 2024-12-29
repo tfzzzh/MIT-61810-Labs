@@ -1,3 +1,82 @@
+# MIT 6.1810: Operating System Engineering - Lab Solutions
+This repository contains all solutions to the labs from MIT course: [6.1810 Operating
+System Engineering](https://pdos.csail.mit.edu/6.828/2024/schedule.html).
+## My Acknowledgments
+I would like to thank **Professor Robert Morris**, **Professor Adam Belay** and the entire teaching staff for sharing this incredible course to the public. This course significantly enhances my understand of both the principles and the practical implementation of the Unix kernel. 
+## Environment Setup
+The labs requires develop tools including **QEMU, GDB, GCC**. You can
+check how to install them on the course's [website](https://pdos.csail.mit.edu/6.1810/2024/tools.html).
+
+For my setup, all the labs are completed on **Ubuntu 24.04**.
+## Reproduce Solutions
+To reproduce the solutions for each lab, follow the steps below for each respective lab:
+### Lab: Xv6 and Unix utilities
+```shell
+git fetch
+git checkout util
+make clean
+make grade
+```
+### Lab: system calls
+```shell
+git fetch
+git checkout syscall
+make clean
+make grade
+```
+### Lab: page tables
+```shell
+git fetch
+git checkout pgtbl
+make clean
+make grade
+```
+### Lab: traps
+```shell
+git fetch
+git checkout traps
+make clean
+make grade
+```
+### Lab: Copy-on-Write Fork for xv6
+```shell
+git fetch
+git checkout cow
+make clean
+make grade
+```
+### Lab: networking
+```shell
+git fetch
+git checkout net
+make clean
+make grade
+```
+### Lab: locks
+```shell
+git fetch
+git checkout lock
+make clean
+make grade
+```
+### Lab: file system
+```shell
+git fetch
+git checkout fs
+make clean
+make grade
+```
+### Lab: mmap
+```shell
+git fetch
+git checkout mmap
+make clean
+make grade
+```
+
+## README For Xv6 Project
+
+
 xv6 is a re-implementation of Dennis Ritchie's and Ken Thompson's Unix
 Version 6 (v6).  xv6 loosely follows the structure and style of v6,
 but is implemented for a modern RISC-V multiprocessor using ANSI C.

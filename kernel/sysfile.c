@@ -503,3 +503,344 @@ sys_pipe(void)
   }
   return 0;
 }
+
+
+/*
+void *mmap(void *addr, size_t len, int prot, int flags,
+           int fd, off_t offset)
+*/
+uint64 sys_mmap(void) {
+  // get input and check if input is valid
+  uint64 len;
+  int prot, flags, fd;
+  argaddr(1, &len);
+  argint(2, &prot);
+  argint(3, &flags);
+  argint(4, &fd);
+  struct proc* self = myproc();
+
+  if (len <= 0 || len % PGSIZE != 0) {
+    printf("sys_mmap: len = %ld is not a valid number\n", len);
+    return -1;
+  }
+
+  if (fd < 0 || fd >= NOFILE) {
+    printf("sys_mmap: fd = %d is not a valid number\n", fd);
+    return -1;
+  }
+
+  struct file * fptr = self->ofile[fd];
+  if (fptr == NULL) {
+    printf("sys_mmap: fd = %d is bind to null\n", fd);
+    return -1;
+  }
+
+  // check file type being f->type == FD_INODE
+  // check file's offset is 0
+  if (fptr->type != FD_INODE) {
+    printf("sys_mmap: fd = %d is not bind to a file\n", fd);
+    return -1;
+  }
+
+  // check RD compitible
+  if ((prot & PROT_WRITE) && (flags & MAP_SHARED) && (fptr->writable == 0)) {
+    printf("sys_mmap: fd = %d is not writable\n", fd);
+    return -1;
+  }
+
+
+  // find a unused va
+  int slot = 0;
+  while (slot < NVMA && self->vm_areas[slot].length != 0) {
+    slot += 1;
+  }
+
+  if (slot >= NVMA) {
+    printf("sys_mmap: vm_areas are full\n");
+    return -1;
+  }
+  struct vm_area *area = self->vm_areas + slot;
+
+  // add reference to the fd, update file reference, one shall check if fd is valid
+  // when fail one must call close
+  filedup(fptr);
+  area->fptr = fptr; // release when fail
+
+  // get current proc, and use proc->size to find a unused region
+  // we shall make start pasize alignment
+  if (self->next_start == 0) {
+    self->next_start = PGROUNDUP(self->sz);
+  }
+  if (self->next_start < self->sz) panic("sys_mmap: memory crash");
+  uint64 start = self->next_start;
+  uint64 end = start + len;
+  if (end <= start) {
+    printf("sys_mmap: address overflow\n");
+    area->fptr = NULL;
+    fileclose(fptr);
+    return -1;
+  }
+  self->next_start = end;
+
+  // add a VMA to the process's table of mapped regions
+  area->start_addr = start;
+  area->length = len;
+  area->flags = flags;
+  area->prot = prot;
+  area->valid_start = start;
+  area->valid_end = start + len;
+
+  printf("sys_mmap size of proc: %lx, start_addr: %lx, end_addr: %lx\n", self->sz, start, start + len);
+  // fill other part of the vma
+  return start;
+}
+
+
+// int munmap(void *addr, size_t len);
+void write_back(pagetable_t pagetable, struct file * fptr, uint64 addr, uint64 len, uint64 offset);
+void put_back(pagetable_t pagetable, uint64 addr, uint64 len);
+uint64 sys_munmap(void) {
+  // parse parameters
+  uint64 addr, len;
+  argaddr(0, &addr);
+  argaddr(1, &len);
+
+  // addr and len must aligned with page size
+  if (addr % PGSIZE != 0 || len % PGSIZE != 0) {
+    printf("sys_munmap: addr or len not page aligned \n");
+    return -1;
+  }
+  
+  // get the memory range to release
+  int slot = 0;
+  struct proc * proc = myproc();
+  struct vm_area * area = proc->vm_areas;
+  while (slot < NVMA) {
+    if (
+      area->length != 0 &&
+      area->valid_start <= addr &&
+      addr + len <= area->valid_end
+    ) {
+      break;
+    }
+    slot += 1;
+    area += 1;
+  }
+
+  // check if vma found
+  if (slot >= NVMA) {
+    printf("sys_munmap: range not in vm area\n");
+    return -1;
+  }
+
+
+  // change valid_start or valid_end
+  // [addr, addr+len] removed
+  if (area->valid_start == addr) {
+    area->valid_start = addr + len;
+  }
+  // [valid_end - len, valid_end] removed
+  else if (addr + len == area->valid_end) {
+    area->valid_end -= len;
+  }
+  else {
+    printf("sys_munmap: cannot make a whole in vm area\n");
+    return -1;
+  }
+
+  // write the page back to memory 
+  if (area->flags & MAP_SHARED) {
+    uint64 offset = addr - area->start_addr;
+    // printf("clear page range [%lx, %lx) in [%lx, %lx]\n", addr, addr+len, area->start_addr, area->start_addr + area->length);
+    write_back(proc->pagetable, area->fptr, addr, len, offset);
+  }
+  else {
+    // unintall pages
+    put_back(proc->pagetable, addr, len);
+  }
+
+  // when all memory release one should release vm area
+  if (area->valid_start >= area->valid_end) {
+    clear_vm_area(area, proc->pagetable);
+  }
+
+  return 0;
+}
+
+
+/*
+// 1. if share bit set sync with disk
+// 2. decrement the reference count of the corresponding struct file
+// 3. clear the whole slot
+*/
+void clear_vm_area(struct vm_area * area, pagetable_t pagetable) {
+  struct file * fptr = area->fptr;
+  // printf("clear page range [%lx, %lx) in [%lx, %lx]\n", area->valid_start, area->valid_end, area->start_addr, area->start_addr + area->length);
+  // sync with disk
+  if (area->valid_start < area->valid_end) {
+    uint64 addr = area->valid_start;
+    uint64 len = area->valid_end - area->valid_start;
+    if (area->flags & MAP_SHARED) {
+      uint64 offset = addr - area->start_addr;
+      write_back(pagetable, area->fptr, addr, len, offset);
+    }
+    else {
+      put_back(pagetable, addr, len);
+    }
+  }
+
+  fileclose(fptr);
+
+  // clear the slot
+  memset(area, 0, sizeof(struct vm_area));
+}
+
+
+// assumption: ip is not locked
+// handle share case
+void write_back(pagetable_t pagetable, struct file * fptr, uint64 addr, uint64 len, uint64 offset) {
+  // sync
+  struct inode * ip = fptr->ip;
+  begin_op();
+  ilock(ip);
+
+  /// assumption offset is page aligned
+  if (offset % PGSIZE != 0) panic("write_back: pagsize not aligned");
+  // while (ip->size < offset) {
+  //   if (writei(ip, 0, (uint64) zpg, ip->size, PGSIZE) != PGSIZE) {
+  //     panic("write_back: writei zero page fail");
+  //   }
+  // }
+
+  // what if two process share a file? may need lock
+  for (uint64 pgaddr = addr; pgaddr < addr+len; pgaddr += PGSIZE) {
+    // check if pgaddr loaded into the table, if yes write it back to disk (check dirty)
+    if (walkaddr(pagetable, pgaddr) != 0) {
+      pte_t* pte = walk(pagetable, pgaddr, 0);
+      if (
+        (PTE_FLAGS(*pte) & PTE_D) &&
+        offset < ip->size
+      )
+      {
+        uint nbyte = ip->size - offset;
+        // printf("try to write back for %d bytes\n", nbyte);
+        if (writei(ip, 0, PTE2PA(*pte), offset, nbyte) != nbyte) {
+          panic("write_back: writei fail");
+        }
+      }
+
+      // this page can remove
+      uvmunmap(pagetable, pgaddr, 1, 1);
+
+      offset += PGSIZE;
+    }
+  }
+  iunlock(ip);
+  end_op();
+}
+
+// handle private case
+void put_back(pagetable_t pagetable, uint64 addr, uint64 len) {
+  for (uint64 pgaddr = addr; pgaddr < addr+len; pgaddr += PGSIZE) {
+    // check if pgaddr loaded into the table, if yes write it back to disk (check dirty)
+    if (walkaddr(pagetable, pgaddr) != 0) {
+      // this page can remove
+      uvmunmap(pagetable, pgaddr, 1, 1);
+    }
+  }
+}
+
+int mmap_load_instr() {
+  if (r_scause() != 0xd && r_scause() != 0xf) return -1; // failed
+  uint64 va = r_stval();
+
+  // get current proc and its pagetable
+  struct proc * proc = myproc();
+  pagetable_t pagetable = proc->pagetable;
+
+  // get the page addr for va
+  uint64 pgaddr = PGROUNDDOWN(va);
+
+  // find the vm_area contains pgaddr
+  int slot = 0;
+  struct vm_area * area = proc->vm_areas;
+  while (slot < NVMA) {
+    if (
+      area->length != 0 &&
+      area->start_addr <= pgaddr &&
+      pgaddr < area->start_addr + area->length
+    ) {
+      break;
+    }
+    slot += 1;
+    area += 1;
+  }
+
+  if (slot >= NVMA) {
+    printf("mmap_load_instr: va %lx not in any vm area\n", va);
+    return -1;
+  }
+
+  // va not in valid range ? panic
+  if (va < area->valid_start || va >= area->valid_end) {
+    printf("mmap_load_instr: visit invalid memory\n");
+    exit(-1);
+  }
+
+  // write an only readable page
+  if ((area->prot & PROT_WRITE) == 0 && r_scause() == 0xf) {
+    printf("try to write a readable page\n");
+    exit(-1);
+  }
+
+  // read priority from vma
+  int perm = PTE_U;
+  if ((area->prot & PROT_READ)) {
+    perm = perm | PTE_R;
+  }
+  if ((area->prot & PROT_WRITE)) {
+    perm = perm | PTE_W;
+  }
+  // X and None shall not supprted
+
+  // allocate a page for the pgaddr and map it to user pagetable
+  void * newpage = kalloc();
+  if (newpage == NULL) {
+    printf("mmap_load_instr: memory full\n");
+    return -1;
+  }
+
+  memset(newpage, 0, PGSIZE);
+
+  printf("map page addr: %lx\n", pgaddr);
+  if (mappages(pagetable, pgaddr, PGSIZE, (uint64) newpage, perm) == -1) {
+    // resources: newpage
+    kfree(newpage);
+    printf("mmap_load_instr: map page not success\n");
+    return -1;
+  }
+
+  printf("mappages done\n");
+
+  uint64 offset = pgaddr - area->start_addr; // not shrink start_add in unmmap
+  int read_bytes = 0;
+  struct inode * ip = area->fptr->ip;
+  ilock(ip);
+  // case 1: offset >= filesize, noting need to read
+  if (offset < ip->size) {
+    // case 2: offset < filesize, but offset + pagesize > filesize
+    // case 3: offset < filesize && offset + pagesize <= filesize
+    // load data from the file
+
+    if ((read_bytes = readi(area->fptr->ip, 0, (uint64) newpage, offset, PGSIZE)) == 0) {
+      // failed release resources
+      iunlock(area->fptr->ip);
+      printf("mmap_load_instr: read fail from the inode");
+      uvmunmap(pagetable, pgaddr, 1, 1);
+      return -1;
+    }
+  }
+
+  iunlock(area->fptr->ip);
+  return 0;
+}

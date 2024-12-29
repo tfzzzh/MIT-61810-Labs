@@ -5,6 +5,8 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+// #include "fcntl.h"
+// #include "file.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -15,6 +17,7 @@ extern char trampoline[], uservec[], userret[];
 void kernelvec();
 
 extern int devintr();
+extern int mmap_load_instr(); // in sysfile.c
 
 void
 trapinit(void)
@@ -67,6 +70,11 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  }
+  // load page fault 
+  else if (mmap_load_instr() == 0) {
+    // trap hanlded by mmap ok
+  
   } else {
     printf("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
     printf("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());

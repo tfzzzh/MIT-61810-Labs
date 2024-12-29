@@ -140,6 +140,14 @@ found:
     return 0;
   }
 
+  // check if the vmas deleted
+  for (int i=0; i < NVMA; ++i) {
+    if (proc->vm_areas[i].length != 0) {
+      panic("allocproc: vma contains data");
+    }
+  }
+  proc->next_start = 0;
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -158,8 +166,10 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
-  if(p->pagetable)
+  if(p->pagetable) {
+    proc_free_vmareas(p->pagetable, p->vm_areas);
     proc_freepagetable(p->pagetable, p->sz);
+  }
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -169,6 +179,14 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+
+  // check if the vmas deleted
+  for (int i=0; i < NVMA; ++i) {
+    if (proc->vm_areas[i].length != 0) {
+      memset(&proc->vm_areas[i], 0, sizeof(struct vm_area));
+      printf("freeproc: vma not released when exit\n");
+    }
+  }
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -213,6 +231,16 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
   uvmfree(pagetable, sz);
+}
+
+// free vma
+void
+proc_free_vmareas(pagetable_t pagetable, struct vm_area * areas) {
+  for (int i=0; i < NVMA; ++i) {
+    if (areas[i].length > 0) {
+      clear_vm_area(&(areas[i]), pagetable);
+    }
+  }
 }
 
 // a user program that calls exec("/init")
@@ -296,6 +324,15 @@ fork(void)
   }
   np->sz = p->sz;
 
+  // copy vma
+  for (i=0; i < NVMA; ++i) {
+    memmove(&(np->vm_areas[i]), &(p->vm_areas[i]), sizeof(struct vm_area));
+    if (np->vm_areas[i].length > 0) {
+      filedup(np->vm_areas[i].fptr);
+    }
+  }
+  np->next_start = p->next_start;
+
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
@@ -350,6 +387,13 @@ exit(int status)
 
   if(p == initproc)
     panic("init exiting");
+
+  // ummap all mappings
+  for (int i=0; i < NVMA; ++i) {
+    if (p->vm_areas[i].length > 0) {
+      clear_vm_area(p->vm_areas + i, p->pagetable);
+    }
+  }
 
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){

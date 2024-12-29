@@ -81,6 +81,17 @@ struct trapframe {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+// virtual memory area when length == 0 the area is not valid
+struct vm_area {
+  uint64 start_addr; // start address
+  uint64 length; // area: [start_addr, start_addr + length)
+  int prot; // priority PROT_READ; PROT_WRITE
+  int flags; // MAP_SHARED MAP_PRIVATE
+  struct file * fptr; // pointer to file
+  uint64 valid_start;
+  uint64 valid_end;
+};
+
 // Per-process state
 struct proc {
   struct spinlock lock;
@@ -99,6 +110,8 @@ struct proc {
   uint64 kstack;               // Virtual address of kernel stack
   uint64 sz;                   // Size of process memory (bytes)
   pagetable_t pagetable;       // User page table
+  uint64 next_start;           // next start position of mmap
+  struct vm_area vm_areas[NVMA]; // virtual memory areas
   struct trapframe *trapframe; // data page for trampoline.S
   struct context context;      // swtch() here to run process
   struct file *ofile[NOFILE];  // Open files

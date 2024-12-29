@@ -93,6 +93,8 @@ int             growproc(int);
 void            proc_mapstacks(pagetable_t);
 pagetable_t     proc_pagetable(struct proc *);
 void            proc_freepagetable(pagetable_t, uint64);
+struct vm_area;
+void            proc_free_vmareas(pagetable_t pagetable, struct vm_area * areas);
 int             kill(int);
 int             killed(struct proc*);
 void            setkilled(struct proc*);
@@ -148,6 +150,10 @@ void            argaddr(int, uint64 *);
 int             fetchstr(uint64, char*, int);
 int             fetchaddr(uint64, uint64*);
 void            syscall();
+
+// sysfile.c
+struct vm_area;
+void            clear_vm_area(struct vm_area * area, pagetable_t pagetable);
 
 // trap.c
 extern uint     ticks;

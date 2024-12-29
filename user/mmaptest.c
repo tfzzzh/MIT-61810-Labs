@@ -366,6 +366,7 @@ more_test()
 
   *p = 'X';
   *(p+PGSIZE) = 'Y';
+  // printf("write done\n");
 
   pid = fork();
   if(pid < 0) err("fork");
